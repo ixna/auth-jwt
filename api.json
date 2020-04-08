@@ -1,0 +1,75 @@
+{
+    "openapi":"3.0.2",
+    "info": {
+        "title":"API Title",
+        "version":"1.0"
+    },
+    "servers": [
+        {"url":"http://localhost:9120"}
+    ],
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT"
+        }
+        }
+    },
+    "paths": {
+        "/me": {
+            "get": {
+                "security": [{"bearerAuth":[]}],
+                "description": "Get current user information",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Basic error on authentication"
+                    }
+                }
+            }
+        },
+        "/register": {
+            "post": {
+                "description": "Register new user, parameter sent in JSON format",
+                "parameters": [],
+                "requestBody":{"description": "JSON body parameter",
+                    "required": true,
+                    "content": {"appllication/json": {"schema":{
+                        "type": "object",
+                        "properties": {"phone":{"type": "string"}, "name":{"type": "string"}, "role":{"type": "string"}},
+                        "required": ["phone", "name", "role"]
+                    }}}
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/login": {
+            "post": {
+                "description": "Fetch list from data service",
+                "parameters": [],
+                "requestBody":{"description": "JSON body parameter",
+                    "required": true,
+                    "content": {"appllication/json": {"schema":{
+                        "type": "object",
+                        "properties": {"phone":{"type": "string"}, "password":{"type": "string"}},
+                        "required": ["phone", "password"]
+                    }}}
+                },
+
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        }
+    }
+}
