@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"example.com/hello/models"
 	"github.com/BurntSushi/toml"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/ixna/auth-jwt/models"
 	"github.com/volatiletech/sqlboiler/boil"
 	"github.com/volatiletech/sqlboiler/queries/qm"
 	"golang.org/x/crypto/bcrypt"
@@ -51,10 +51,6 @@ type authForms struct {
 	Password string `json:"password"`
 }
 
-type checkForms struct {
-	Token string `json:"token"`
-}
-
 type registerResult struct {
 	Password string `json:"password"`
 	Message  string `json:"message"`
@@ -82,17 +78,29 @@ func main() {
 	router := gin.Default()
 	router.POST("/register", registerHandler)
 	router.POST("/login", loginHandler)
-	router.POST("/check_token", checkTokenHandler)
+	router.GET("/me", checkTokenHandler)
 	router.Run(conf.Service.Port)
 }
 
+func validateToken(authString string) string {
+	authFields := strings.Fields(authString)
+	schema := strings.ToLower(authFields[0])
+
+	if schema == "bearer" {
+		return authFields[1]
+	}
+	return ""
+}
+
 func checkTokenHandler(req *gin.Context) {
-	var input checkForms
-	if err := req.ShouldBindJSON(&input); err != nil {
-		req.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	authString := req.GetHeader("Authorization")
+	fmt.Println(authString)
+	tokenString := validateToken(authString)
+	if tokenString == "" {
+		req.JSON(http.StatusBadRequest, gin.H{"message": "Token is missing, check your request"})
 		return
 	}
-	tokenString := input.Token
+
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Don't forget to validate the alg is what you expect:
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -109,6 +117,7 @@ func checkTokenHandler(req *gin.Context) {
 		req.JSON(http.StatusOK, claims)
 		return
 	}
+
 	req.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 	return
 }
@@ -160,9 +169,11 @@ func loginHandler(req *gin.Context) {
 
 		// Sign and get the complete encoded token as a string using the secret
 		tokenString, err := token.SignedString(secret)
-
-		fmt.Println(tokenString, err)
-
+		if err == nil {
+			req.JSON(http.StatusOK, gin.H{"token": tokenString, "message": "Use this token to auth"})
+		} else {
+			req.JSON(http.StatusBadRequest, gin.H{"message": "Error on token generation process"})
+		}
 	} else {
 		req.JSON(http.StatusBadRequest, gin.H{"message": "Phone number and password did not match"})
 	}
