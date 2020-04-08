@@ -2,6 +2,12 @@
 Authenticator API with jwt using go programming language
 
 # Getting Started
+Modify database configuration in config.toml
+generate table using sql script provided in migrate
+Generate database models with script
+```
+sh generate_models.sh
+``` 
 
 Install all requirement package
 ```
