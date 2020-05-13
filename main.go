@@ -1,13 +1,11 @@
 package main
 
 import (
-	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -15,29 +13,19 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/ixna/auth-jwt/models"
-	"github.com/volatiletech/sqlboiler/boil"
-	"github.com/volatiletech/sqlboiler/queries/qm"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Config used to map parameters from toml file
 type Config struct {
-	Mysql   mysql
 	Service service
-}
-
-type mysql struct {
-	Dbname string
-	Host   string
-	User   string
-	Pass   string
 }
 
 type service struct {
 	Port      string
 	JwtSecret string `toml:"jwt_secret"`
+	DataPath  string `toml:"data_path"`
 }
 
 type registerForms struct {
@@ -72,13 +60,12 @@ func main() {
 		fmt.Println(err)
 	}
 
-	fmt.Println(conf)
-
 	// Enter password and generate a salted Hash
 	router := gin.Default()
 	router.POST("/register", registerHandler)
 	router.POST("/login", loginHandler)
 	router.GET("/me", checkTokenHandler)
+	router.GET("/", homeHandler)
 	router.Run(conf.Service.Port)
 }
 
@@ -92,11 +79,16 @@ func validateToken(authString string) string {
 	return ""
 }
 
+func homeHandler(req *gin.Context) {
+	req.String(200, "Hello world")
+}
+
 func checkTokenHandler(req *gin.Context) {
 	authString := req.GetHeader("Authorization")
 	fmt.Println(authString)
 	tokenString := validateToken(authString)
 	if tokenString == "" {
+		req.Header("Content-Type", "application/json")
 		req.JSON(http.StatusBadRequest, gin.H{"message": "Token is missing, check your request"})
 		return
 	}
@@ -113,7 +105,7 @@ func checkTokenHandler(req *gin.Context) {
 	})
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		fmt.Println("Hasil", claims)
+		req.Header("Content-Type", "application/json")
 		req.JSON(http.StatusOK, claims)
 		return
 	}
@@ -130,18 +122,9 @@ func loginHandler(req *gin.Context) {
 	}
 
 	password := input.Password
-	fmt.Println(password)
 	phone := sanitizePhone(input.Phone)
-	db, err := connectDB()
-	if err != nil {
-		fmt.Println(errors.New(err.Error()))
-		req.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-		return
-	}
-	ctx := context.Background()
 
-	defer db.Close()
-	users, err := models.Users(qm.Where("phone = ?", phone)).One(ctx, db)
+	users, err := getDB(phone)
 	if err != nil {
 		req.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
@@ -248,33 +231,56 @@ func sanitizePhone(phone string) int64 {
 	return phoneNum
 }
 
-func connectDB() (*sql.DB, error) {
-	dbConfig := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s",
-		conf.Mysql.User, conf.Mysql.Pass, conf.Mysql.Host, conf.Mysql.Dbname)
-	db, err := sql.Open("mysql", dbConfig)
-	if err != nil {
-		fmt.Println(err)
-		exception := errors.New("Error connect to database")
-		return nil, exception
+func checkUserExists(phoneStr string) error {
+	if _, err := os.Stat(phoneStr); err != nil {
+		return fmt.Errorf("%s data not found", phoneStr)
 	}
+	return nil
+}
 
-	return db, nil
+func userDataPath(phone int64) string {
+	return fmt.Sprintf("%s%d", conf.Service.DataPath, phone)
 }
 
 func writeDB(userObject *models.User) error {
-	db, err := connectDB()
-	if err != nil {
-		return errors.New(err.Error())
+	if err := checkUserExists(userDataPath(userObject.Phone)); err == nil {
+		return fmt.Errorf("Phone number %d is already registered, please login", userObject.Phone)
 	}
+	f, err := os.Create(userDataPath(userObject.Phone))
+	defer f.Close()
 
-	ctx := context.Background()
-	defer db.Close()
-	if err := userObject.Insert(ctx, db, boil.Infer()); err != nil {
-		fmt.Println(err)
-		exception := errors.New(err.Error())
-		return exception
+	if err != nil {
+		return err
 	}
+	data := fmt.Sprintf("%s %s %d",
+		userObject.Password, userObject.Name, userObject.IsAdmin)
+
+	f.WriteString(data)
 	return nil
+}
+
+// Get user data from file
+func getDB(phone int64) (*models.User, error) {
+	f, err := os.Open(userDataPath(phone))
+	if err != nil {
+		return nil, fmt.Errorf("Phone %s is not found, ", phone)
+	}
+	defer f.Close()
+	buf := make([]byte, 1000)
+	val, _ := f.Read(buf)
+
+	valSplit := strings.Split(string(buf[:val]), " ")
+	isAdmin, err := strconv.Atoi(valSplit[2])
+	if err != nil {
+		isAdmin = 0
+	}
+	userObject := &models.User{
+		Phone:    phone,
+		Password: valSplit[0],
+		Name:     valSplit[1],
+		IsAdmin:  isAdmin,
+	}
+	return userObject, nil
 }
 
 // Generate 4 letters random password

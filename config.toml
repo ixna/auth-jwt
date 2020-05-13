@@ -1,11 +1,4 @@
-[mysql]
-  dbname  = "local"
-  host    = "127.0.0.1"
-  port    = 3306
-  user    = "user"
-  pass    = "123qwe"
-  sslmode = "false"
-
 [service]
   port    = ":9120"
   jwt_secret = "$$$verySecret(<)(<)"
+  data_path = "users/"
