@@ -56,9 +56,14 @@ type MyCustomClaims struct {
 var conf Config
 
 func main() {
+	// Housekeeping
 	if _, err := toml.DecodeFile("./config.toml", &conf); err != nil {
 		fmt.Println(err)
+		panic("Config file error")
 	}
+
+	fmt.Println(conf.Service.DataPath)
+	os.Mkdir(conf.Service.DataPath, 0600)
 
 	// Enter password and generate a salted Hash
 	router := gin.Default()
