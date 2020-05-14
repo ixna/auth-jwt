@@ -17,3 +17,8 @@ For production, build and run the binary
 go build
 ./auth-jwt
 ```
+
+Or simply refer to data fetcher project
+```
+https://github.com/ixna/data-fetcher
+```
